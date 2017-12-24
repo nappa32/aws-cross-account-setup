@@ -1,0 +1,309 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: creates the needed roles for the child accounts for a given account
+Parameters:
+  ParentAccount:
+    Description: id of the parent account
+    Default: "763888471918"
+    Type: String
+Resources:
+  # CHEKCLIST
+  # [] RestrictionsForAll has this new role
+  # [] DeveloperRolePolicy->DisallowRoleModificationForCrossAccountRoles has this new Role in the resource list
+  RestrictionsForAll:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: "RestrictAllUsersAccessPolicy"
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Sid: RestrictAllUsersFromcompanyRDS
+          Effect: Deny
+          Action:
+          - rds:Delete*
+          Resource:
+          - arn:aws:rds:*:*:db:company
+        - Effect: Deny
+          Action:
+          - s3:DeleteBucket
+          - s3:DeleteObjectVersion
+          - s3:PutBucketPolicy
+          - s3:PutLifecycleConfiguration
+          Resource:
+          ## company-(company|staging|development)* buckets
+          - "arn:aws:s3:::company-server-logs"
+          - "arn:aws:s3:::company-server-logs/*"
+          - "arn:aws:s3:::company-*"
+          - "arn:aws:s3:::company-*/*"
+          - "arn:aws:s3:::elb-logs-*"
+          - "arn:aws:s3:::elb-logs-*/*"
+          - "arn:aws:s3:::*cloudtrail*"
+          - "arn:aws:s3:::*cloudtrail*/*"
+          - "arn:aws:s3:::*.company.com"
+          - "arn:aws:s3:::*.company.com/*"
+      Roles:
+        - Ref: "DeveloperRole"
+        - Ref: "MobileDeveloperRole"
+        - Ref: "AdminRole"
+
+  AdminRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              AWS:
+                - !Join [ "", ["arn:aws:iam::", !Ref ParentAccount, ":root"]]
+            Action:
+              - "sts:AssumeRole"
+            # Condition:
+            #   Bool:
+            #     aws:MultiFactorAuthPresent: true
+      RoleName: "AdminRole"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+      Policies:
+      -
+        PolicyName: "BillingPermissions"
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            -
+              Effect: "Allow"
+              Action:
+                - "aws-portal:*"
+                - "budgets:*"
+              Resource: "*"
+
+  MobileDeveloperRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              AWS:
+                - !Join [ "", ["arn:aws:iam::", !Ref ParentAccount, ":root"]]
+            Action:
+              - "sts:AssumeRole"
+      RoleName: "MobileDeveloperRole"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchLogsReadOnlyAccess
+
+  MobileDeveloperRolePolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      Roles:
+        -  Ref: "MobileDeveloperRole"
+      PolicyName: "MobileDeveloperRolePolicy"
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Sid: dfgdfgdfgdfgdfg
+          Effect: Allow
+          Action:
+          - s3:AbortMultipartUpload
+          - s3:DeleteObject
+          - s3:Get*
+          - s3:List*
+          - s3:PutObject
+          - s3:PutObjectAcl
+          - s3:PutObjectTagging
+          Resource:
+          - arn:aws:s3:::company-*/dfgdfgdg*
+        - Sid: ListAllBucketLevels
+          Effect: Allow
+          Action:
+          - s3:List*
+          Resource:
+          - "*"
+        - Sid: gfdfgdfgdgf
+          Effect: Allow
+          Action:
+          - dynamodb:Query
+          - dynamodb:BatchWriteItem
+          Resource:
+          - !Sub "arn:aws:dynamodb:*:${AWS::AccountId}:table/*_events"
+        - Sid: SNSpermissionsForDevs
+          Effect: Allow
+          Action:
+            - sns:AddPermission
+            - sns:CheckIfPhoneNumberIsOptedOut
+            - sns:ConfirmSubscription
+            - sns:CreatePlatformApplication
+            - sns:CreatePlatformEndpoint
+            - sns:CreateTopic
+            - sns:Get*
+            - sns:List*
+            - sns:OptInPhoneNumber
+            - sns:Publish
+            - sns:RemovePermission
+            - sns:SetEndpointAttributes
+            - sns:SetPlatformApplicationAttributes
+            - sns:Unsubscribe
+            - sns:SetSMSAttributes
+            - sns:SetSubscriptionAttributes
+            - sns:SetTopicAttributes
+            - sns:Subscribe
+          Resource:
+          - arn:aws:sns:*:*:*
+
+  DeveloperRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              AWS:
+                - !Join [ "", ["arn:aws:iam::", !Ref ParentAccount, ":root"]]
+            Action:
+              - "sts:AssumeRole"
+      RoleName: "DeveloperRole"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+
+  DeveloperRolePolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: "DeveloperRolePolicy"
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Sid: LimitTocompanyRegionsAndEC2InstanceTypes
+          Effect: Deny
+          Action:
+          - ec2:RunInstances
+          - ec2:TerminateInstances
+          Resource:
+          - arn:aws:ec2:us-west-1::instance/*
+          - arn:aws:ec2:us-west-2::instance/*
+          - arn:aws:ec2:eu-west-1::instance/*
+          Condition:
+            StringNotEquals:
+              ec2:InstanceType:
+              - t2.micro
+              - t2.small
+              - t2.nano
+              - m3.small
+              - m3.medium
+              - m4.medium
+              - m4.large
+              - m4.xlarge
+              - m4.2xlarge
+        - Effect: Allow
+          Action:
+          - organizations:DescribeOrganization
+          - aws-portal:View*
+          Resource: "*"
+        - Sid: DisallowRoleModificationForCrossAccountRoles
+          Effect: Deny
+          Action:
+          - iam:CreateRole        # prevent creating same roles
+          - iam:DeleteRole        # prevent deletion of the role
+          - iam:DeleteRolePolicy  # prevent modification of the role permissions
+          - iam:AttachRolePolicy  # prevent escalating permission of other roles
+          Resource:
+          - arn:aws:iam::*:role/AdminRole
+          - arn:aws:iam::*:role/DeveloperRole
+          - arn:aws:iam::*:role/MobileDeveloperRole
+      Roles:
+        - Ref: "DeveloperRole"
+        - Ref: "MobileDeveloperRole"
+
+  SharedDeveloperRolePolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: "SharedDeveloperRolePolicy"
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Deny
+          Action:
+          - aws-portal:Modify*
+          - dynamodb:DeleteTable
+          - elasticache:DeleteSnapshot
+          - es:DeleteElasticsearchDomain
+          - iam:CreateGroup
+          - iam:CreateUser
+          - iam:DeleteGroup
+          - iam:DeleteGroupPolicy
+          - iam:AddUserToGroup
+          - iam:RemoveUserFromGroup
+          - cloudfront:DeleteDistribution
+          - cloudtrail:DeleteTrail
+          - cloudtrail:StopLogging
+          - cloudtrail:UpdateTrail
+          - rds:DeleteDBSnapshot
+          - route53:DeleteHostedZone
+          - route53domains:DeleteDomain
+          - route53domains:TransferDomain
+          Resource: "*"
+        - Sid: NothingAllowedOnCrossAccountStacks
+          Effect: Deny
+          Action:
+          - cloudformation:Create*
+          - cloudformation:Delete*
+          - cloudformation:Execute*
+          - cloudformation:Execute*
+          - cloudformation:ListExports
+          - cloudformation:ListImports
+          - cloudformation:ListStackResources
+          Resource:
+          - arn:aws:cloudformation:*:*:stack/*CrossAccountRoles/*
+          - arn:aws:cloudformation:*:*:stack/*CrossAccountRoles
+        - Effect: Allow
+          Action:
+          - organizations:DescribeOrganization
+          - aws-portal:View*
+          Resource: "*"
+        - Sid: DisallowcompanyCFNizedRDSDeletes
+          Effect: Deny
+          Action:
+          - rds:DeleteDBCluster
+          - rds:DeleteDBInstance
+          Resource: "*"
+          Condition:
+            StringLike:
+              rds:db-tag/aws:cloudformation:stack-name: "*-company"
+        - Sid: DisallowLegacycompanyEnvRDSDeletes
+          Effect: Deny
+          Action:
+          - rds:DeleteDBCluster
+          - rds:DeleteDBInstance
+          Resource: "*"
+          Condition:
+            StringEqualsIgnoreCase:
+              rds:db-tag/environment: company
+        - Sid: DisallowLegacycompanyEnvRDSDeletesCapitalizedEnvTagName
+          Effect: Deny
+          Action:
+          - rds:DeleteDBCluster
+          - rds:DeleteDBInstance
+          Resource: "*"
+          Condition:
+            StringEqualsIgnoreCase:
+              rds:db-tag/Environment: company
+        - Sid: AllowUsersToAccessSharedAPPKMSKey
+          Effect: Allow
+          Action:
+          - kms:Describe*
+          - kms:Get*
+          - kms:List*
+          - iam:ListGroups
+          - iam:ListRoles
+          - iam:ListUsers
+          - kms:Decrypt
+          - kms:Encrypt
+          Resource:
+          - arn:aws:kms:us-west-1:123123123123:key/2636a9fb-8786-43a8-b2f4-234234234243
+          - arn:aws:kms:us-west-1:123123123123:key/58c15840-4d32-4e8e-985f-rertertert42
+      Roles:
+        - Ref: "DeveloperRole"
+        - Ref: "MobileDeveloperRole"

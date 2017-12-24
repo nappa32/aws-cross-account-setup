@@ -1,0 +1,130 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: creates the needed roles for the child accounts for a given account
+
+Parameters:
+  ParentAccount:
+    Description: id of the parent account
+    Default: "763888471918"
+    Type: String
+  ParentAccountAlias:
+    Description: id of the parent account
+    Default: "company-iam"
+    Type: String
+  ChildAccountId:
+    Description: id of the legacy account
+    Type: String
+  ChildAccountAlias:
+    Type: String
+  ChildAccountAliasNonCapitalised:
+    Type: String
+  Env:
+    Type: String
+
+Resources:
+  ManagedPolicyForSelfManagement:
+    Type: "AWS::IAM::ManagedPolicy"
+    Properties:
+      Groups:
+        - !Ref AdminGroup
+        - !Ref DeveloperGroup
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - iam:ListAccountAliases
+          - iam:ListUsers
+          - iam:GetAccountSummary
+          Resource: "*"
+        - Effect: Allow
+          Action:
+          - iam:ChangePassword
+          - iam:CreateAccessKey
+          - iam:CreateLoginProfile
+          - iam:DeleteAccessKey
+          - iam:UpdateAccessKey
+          - iam:UpdateLoginProfile
+          - iam:DeleteSigningCertificate
+          - iam:UpdateSigningCertificate
+          - iam:UploadSigningCertificate
+          - iam:DeleteSSHPublicKey
+          - iam:UpdateSSHPublicKey
+          - iam:UploadSSHPublicKey
+          - iam:DeleteLoginProfile
+          - iam:Get*
+          - iam:List*
+          Resource: !Join [ "", ["arn:aws:iam::", !Ref ParentAccount, ":user/${aws:username}"]]
+        - Effect: Allow
+          Action:
+          - iam:ListVirtualMFADevices
+          - iam:ListMFADevices
+          Resource:
+            - !Join [ "", ["arn:aws:iam::", !Ref ParentAccount, ":mfa/*"]]
+            - !Join [ "", ["arn:aws:iam::", !Ref ParentAccount, ":user/${aws:username}"]]
+        - Effect: Allow
+          Action:
+          - iam:CreateVirtualMFADevice
+          - iam:DeactivateMFADevice
+          - iam:DeleteVirtualMFADevice
+          - iam:RequestSmsMfaRegistration
+          - iam:FinalizeSmsMfaRegistration
+          - iam:EnableMFADevice
+          - iam:ResyncMFADevice
+          Resource:
+            - !Join [ "", ["arn:aws:iam::", !Ref ParentAccount, ":mfa/${aws:username}"]]
+            - !Join [ "", ["arn:aws:iam::", !Ref ParentAccount, ":user/${aws:username}"]]
+  # ManagedPolicyForDenyNonMFAAccess:
+  #   Type: "AWS::IAM::ManagedPolicy"
+  #   Properties:
+  #     Groups:
+  #       - !Ref AdminGroup
+  #       - !Ref DeveloperGroup
+  #       - !Ref MobileDeveloperGroup
+  #     PolicyDocument:
+  #       {
+  #         "Version": "2012-10-17",
+  #         "Statement":[
+  #           {
+  #             "Sid": "BlockAnyAccessOtherThanAboveUnlessSignedInWithMFA",
+  #             "Effect": "Deny",
+  #             "NotAction": "iam:*",
+  #             "Resource": "*",
+  #             "Condition":{ "BoolIfExists":{ "aws:MultiFactorAuthPresent": "false"}}
+  #           }
+  #         ]
+  #       }
+  AdminGroup:
+    Type: AWS::IAM::Group
+    Properties:
+      GroupName: !Join [ "", [!Ref Env, "AdminGroup"]]
+      Policies:
+      - PolicyName: GroupPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - sts:AssumeRole
+            Resource: !Join [ "", ["arn:aws:iam::", !Ref ChildAccountId, ":role/AdminRole"]]  # ends with /#{Role}Role
+  DeveloperGroup:
+    Type: AWS::IAM::Group
+    Properties:
+      GroupName: !Join [ "", [!Ref Env, "DeveloperGroup"]]
+      Policies:
+      - PolicyName: GroupPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - sts:AssumeRole
+            Resource: !Join [ "", ["arn:aws:iam::", !Ref ChildAccountId, ":role/DeveloperRole"]]
+
+Outputs:
+  ConsoleAccessUrl:
+    Value: !Join [ "", ["https://", !Ref ParentAccountAlias, ".signin.aws.amazon.com/console"]]
+  AdminLink:
+    Value: !Join [ "", ["https://signin.aws.amazon.com/switchrole?account=", !Ref ChildAccountAliasNonCapitalised, "&roleName=AdminRole"]]
+  DeveloperLink:
+    Value: !Join [ "", ["https://signin.aws.amazon.com/switchrole?account=", !Ref ChildAccountAliasNonCapitalised, "&roleName=DeveloperRole"]]

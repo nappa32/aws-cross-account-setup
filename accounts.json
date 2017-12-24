@@ -1,0 +1,33 @@
+{
+  "accounts": {
+    "parent": {
+      "id": "763888471918",
+      "alias": "company-iam"
+    },
+    "children": {
+      "development": {
+        "id": "887908273951",
+        "email": "development@company.com",
+        "alias": "company-development"
+      },
+      "staging": {
+        "id": "836001055445",
+        "email": "staging@company.com",
+        "alias": "company-staging"
+      },
+      "production": {
+        "id": "728077210274",
+        "email": "production@company.com",
+        "alias": "company-production"
+      }
+    }
+  },
+  "roles": [
+    "AdminRole",
+    "DeveloperRole"
+  ],
+  "s3": {
+    "bucket": "company-iam-login-s3-bucketname",
+    "filename": "login.html"
+  }
+}

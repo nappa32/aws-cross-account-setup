@@ -1,0 +1,149 @@
+
+## usage
+## add "source ./auth.aws" to your .bashrc OR .zshrc
+## auth [environment-name] [role-name]
+
+function capitalize() { word="${1}" ruby -e "print ENV['word'].capitalize" ;  };
+
+ESC_SEQ="\x1b["
+COL_RESET=$ESC_SEQ"39;49;00m"
+COL_RED=$ESC_SEQ"31;01m"
+COL_YELLOW=$ESC_SEQ"33;01m"
+
+export AWS_PROFILE=LegacyDeveloperRole
+
+ACCOUNTSFILENAME=~/.aws/accounts.json
+MFAFILENAME=~/.aws/mfaconfig
+
+aws_environments=( `jq -r '.accounts.children|keys[]' $ACCOUNTSFILENAME` )
+rolenames=( `jq -r '.roles[]' $ACCOUNTSFILENAME` )
+
+test -f $ACCOUNTSFILENAME || echo "no accounts.json file in : `pwd`"
+
+function printenvironments() {
+  echo "
+  Valid AWS Environments:"
+  echo "-----------------------"
+  for env in "${aws_environments[@]}"
+  do
+    echo $env
+  done
+};
+
+function printroles() {
+  echo "
+  Valid Rolesnames:"
+  echo "-----------------------"
+  for role in "${rolenames[@]}"
+  do
+    echo $role
+  done
+};
+
+function deauth() {
+  unset AWS_ACCESS_KEY
+  unset AWS_ACCESS_KEY_ID
+  unset AWS_DEFAULT_PROFILE
+  unset AWS_DELEGATION_TOKEN
+  unset AWS_ROLE
+  unset AWS_SECRET_ACCESS_KEY
+  unset AWS_SECRET_KEY
+  unset AWS_SECURITY_TOKEN
+  unset AWS_SESSION_EXPIRY
+  unset AWS_SESSION_TOKEN
+}
+
+function role_status() {
+  TIMELEFT=0
+  if [ "$AWS_SESSION_EXPIRY" != "" ]
+  then
+    EXPEPOCH=$(gdate --date "$AWS_SESSION_EXPIRY" +%s)
+    NOWEPOCH=$(gdate +%s)
+    TIMELEFT=$(($EXPEPOCH - $NOWEPOCH))
+
+    if [ "$TIMELEFT" -gt 0 ]
+    then
+      echo "| Expires: in "$TIMELEFT"s "
+    else
+      deauth
+      echo "| EXPIRED "
+    fi
+  fi
+}
+
+function auth() {
+  if [ $# -lt 2 ]; then
+    echo "Usage: auth env-name role-name [######]"
+    echo "eg: auth legacy DeveloperRole"
+    echo ""
+    printenvironments
+    printroles
+  else
+
+    deauth
+
+    case ${1} in
+      [lL]egacy)
+        export env="legacy"
+      ;;
+      [Pp]roduction|[Pp]rod)
+        export env="production"
+      ;;
+      [Ss]taging)
+        export env="staging"
+      ;;
+      [Dd]evelopment|[Dd]ev)
+        export env="development"
+      ;;
+      *)
+        printenvironments
+        echo "Env : ${1} , as none specified"
+        export env="${1}"
+      ;;
+    esac
+
+    case ${2} in
+      [Aa]dmin*)
+        export role="AdminRole"
+      ;;
+      [Mm]obi*)
+        export role="MobileDeveloperRole"
+      ;;
+      [Dd]eveloper*|[Dd]ev)
+        export role="DeveloperRole"
+      ;;
+      *)
+        printroles
+        echo "Role : ${2}, as none specified"
+        export role="${2}"
+      ;;
+    esac
+
+    if [ $# -gt 2 ]; then
+      MFA_OPTION=" --serial-number `jq -r '.serial' ${MFAFILENAME}` --token-code ${3} " ;
+    else
+      MFA_OPTION="" ;
+    fi
+
+    export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-west-1} ;
+
+    awsid=`jq --arg env "${env}" -r ".accounts.children.$env.id" $ACCOUNTSFILENAME` ;
+    DURATION="${4:-3600}" ;
+    NAME="${5:-$LOGNAME@`hostname -s`}" ;
+    rm -f  ~/.aws/temp.json
+    aws sts --region $AWS_DEFAULT_REGION assume-role ${MFA_OPTION} --role-arn "arn:aws:iam::${awsid}:role/${role}" --role-session-name "${NAME}" \
+    --duration-seconds ${DURATION} \
+    --query '[Credentials.AccessKeyId,Credentials.SecretAccessKey,Credentials.SessionToken,Credentials.Expiration]' \
+    --output json > ~/.aws/temp.json
+
+    export AWS_ACCESS_KEY_ID=`jq -r '.[0]' ~/.aws/temp.json`;
+    export AWS_ACCESS_KEY=`jq -r '.[0]' ~/.aws/temp.json`;
+    export AWS_SECRET_ACCESS_KEY=`jq -r '.[1]' ~/.aws/temp.json`;
+    export AWS_SECRET_KEY=`jq -r '.[1]' ~/.aws/temp.json`;
+    export AWS_SESSION_TOKEN=`jq -r '.[2]' ~/.aws/temp.json`;
+    export AWS_SECURITY_TOKEN=`jq -r '.[2]' ~/.aws/temp.json`;
+    export AWS_DELEGATION_TOKEN=`jq -r '.[2]' ~/.aws/temp.json`;
+    export AWS_SESSION_EXPIRY=`jq -r '.[3]' ~/.aws/temp.json`;
+    echo -e "AWS Profile : $COL_RED $(capitalize ${env})${role} $COL_RESET $(role_status)";
+  fi
+} ;
